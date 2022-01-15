@@ -1,0 +1,9 @@
+/build/
+/*.i
+/*.s
+/peripeteies.iso
+/peripeteies.cue
+/cd/
+/__go
+/__make_n_yab.sh
+/__yaul_rebuild.sh
