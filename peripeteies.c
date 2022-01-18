@@ -6,6 +6,7 @@
 #include "peripeteies.h"
 
 #include "svin.h"
+#include "cartridge.h"
 #include <smpc/peripheral.h>
 
 #define MENU_ENTRY_COUNT 16
@@ -52,9 +53,11 @@ main(void)
         //MEMORY_WRITE(32, SCU(ASR0), 0x23301FF0);
 
         //load logo
-        _svin_background_set_no_filelist("BOOTLOGO.BG");
-        while(1);
+        _svin_filelist_fill();
+        _svin_background_set("BOOTLOGO.BG");
         _svin_delay(1000);
+        cartridge_memory_test();
+        while(1);
         _svin_background_fade_to_black();
         
         //_svin_background_set("jap_kbd.bg");  

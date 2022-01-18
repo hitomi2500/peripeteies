@@ -27,6 +27,7 @@ SH_SRCS:= \
 	svin/svin_cd_access.c \
 	svin/svin.c \
 	keycodes.c \
+	cartridge.c \
 	peripeteies.c
 	
 SH_LIBRARIES:=

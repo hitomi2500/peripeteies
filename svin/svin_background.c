@@ -54,7 +54,7 @@ void _svin_background_set(char * filename)
     _svin_background_set_by_fad(_bg_fad,iSize);
 }
 
-void _svin_background_set_no_filelist(char * filename)
+/*void _svin_background_set_no_filelist(char * filename)
 {
     //searching for fad
     iso9660_filelist_t _filelist;
@@ -107,7 +107,7 @@ void _svin_background_set_no_filelist(char * filename)
     //assert(iSize == (704*448 + 2048*2));//could be compressed, skipping
 
     _svin_background_set_by_fad(_bg_fad,iSize);
-}
+}*/
 
 void 
 _svin_background_set_by_fad(fad_t fad, int size)
