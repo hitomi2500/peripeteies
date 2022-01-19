@@ -18,26 +18,53 @@ uint16_t lfsr_fib(void)
 
 bool test_memory_range(void * address, int size, int speed)
 {
+    uint16_t * p16 = (uint16_t *)address;
+    uint16_t s;
     //setting speed
     MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*speed));
     //fill RAM with test data
     lfsr = 0xACE1u;
-    for (int i=0;i<0x40000;i++)
+    for (unsigned int i=0;i<(size/sizeof(uint16_t));i++)
     {
         s = lfsr_fib();
-        //pDebug[i] = s;
         p16[i] = s;
     }
     //verifying
     bool bOk = true;
     lfsr = 0xACE1u;
-    for (int i=0;((i<0x40000) && (bOk == true));i++)
+    for (unsigned int i=0;((i<(size/sizeof(uint16_t))) && (bOk == true));i++)
     {
         s = lfsr_fib();
-        //pDebug[i+0x800] = s;
         if (p16[i] != s)
             bOk = false;  
     }
+    return bOk;
+}
+
+bool test_memory_range_aliased(void * write_address, void *  read_address, int size, int speed)
+{
+    uint16_t * p16 = (uint16_t *)write_address;
+    uint16_t s;
+    //setting speed
+    MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*speed));
+    //fill RAM with test data
+    lfsr = 0xACE1u;
+    for (unsigned int i=0;i<(size/sizeof(uint16_t));i++)
+    {
+        s = lfsr_fib();
+        p16[i] = s;
+    }
+    //verifying
+    p16 = (uint16_t *)read_address;
+    bool bOk = true;
+    lfsr = 0xACE1u;
+    for (unsigned int i=0;((i<(size/sizeof(uint16_t))) && (bOk == true));i++)
+    {
+        s = lfsr_fib();
+        if (p16[i] != s)
+            bOk = false;  
+    }
+    return bOk;
 }
 
 void cartridge_memory_test()
@@ -132,10 +159,10 @@ void cartridge_memory_test()
     vdp1_vram_partitions_get(&vdp1_vram_partitions);
 
            
-    sprintf(text,"  CART MEMORY TEST STARTED...");
+    sprintf(text," TESTING CART...1234567890");
     int heigth = _svin_text_render(buf,352,text,"Robtronika10");
-    uint8_t * p8a = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*10 + (iChunk*6)*352);
-    uint8_t * p8b = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*234 + (iChunk*6)*352);
+    uint8_t * p8a = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*7 );
+    uint8_t * p8b = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*231 );
     uint8_t c;
     for (int j=0;j<(heigth/2);j++)
     {
@@ -155,16 +182,16 @@ void cartridge_memory_test()
     }
 
     bool bRAM;
-    int iRAM_Speed;
+    int ram_speed;
     bool bUnmapped;
-    bool bFail;
+    bool bOk;
     volatile uint16_t *p16;
     //do CS0 tests for each 1M region
-    for (int iChunk = 0; iChunk<32; iChunk++)
+    for (int chunk = 0; chunk<32; chunk++)
     {
         //do test
         //first let's check if it's ROM or RAM
-        p16 = (uint16_t*)(CS0(iChunk*0x100000));
+        p16 = (uint16_t*)(CS0(chunk*0x100000));
         p16[0] = 0xDEAF;
         p16[13] = 0xFACE;    
         if ((p16[0] == 0xDEAF) && (p16[13] == 0xFACE) )
@@ -182,108 +209,81 @@ void cartridge_memory_test()
                     bUnmapped = false;
         }
 
+        int ram_size = 0;
+        bool ram_aliased = false;
         if (true == bRAM)
         {
-            //setting minimal speed
-            iRAM_Speed = 0x10;
-            MEMORY_WRITE(32, SCU(ASR0), 0x1FF01FF0);
-            //fill RAM with test data
-            uint16_t s;
-            //uint16_t * pDebug = (uint16_t * )(LWRAM(0));
-            //uint32_t * pDebug32 = (uint32_t * )(LWRAM(0));
-            //pDebug32[0x800] = (uint32_t)p16;
-            lfsr = 0xACE1u;
-            for (int i=0;i<0x40000;i++)
+            //detecting ram type first at minimal speed
+            if (true == test_memory_range((void*)(CS0(chunk*0x100000)),0x100000,0xF))
             {
-                s = lfsr_fib();
-                //pDebug[i] = s;
-                p16[i] = s;
+                //1M 
+                ram_size = 0x100000;
             }
-            //verifying
-            bFail = false;
-            lfsr = 0xACE1u;
-            for (int i=0;((i<0x40000) && (bFail == false));i++)
+            else if (true == test_memory_range((void*)(CS0(chunk*0x100000)),0xF0000,0xF))
             {
-                s = lfsr_fib();
-                //pDebug[i+0x800] = s;
-                if (p16[i] != s)
-                    bFail = true;  
+                //0.93M 
+                ram_size = 0xF0000;
             }
-            lfsr = 0xACE1u;
-            for (int i=0x40000;i<0x80000;i++)
+            else if ( (true == test_memory_range((void*)(CS0(chunk*0x100000)),0x80000,0xF)) )
             {
-                s = lfsr_fib();
-                //pDebug[i] = s;
-                p16[i] = s;
+                //0.5M 
+                ram_size = 0x80000;
+                if (true == test_memory_range_aliased((void*)(CS0(chunk*0x100000)),(void*)(CS0(chunk*0x100000+0x80000)),0x80000,0xF))
+                    ram_aliased = true;
             }
-            //verifying
-            bFail = false;
-            lfsr = 0xACE1u;
-            for (int i=0x40000;((i<0x80000) && (bFail == false));i++)
+
+            //measuring speed for a small chunk (16K)
+            ram_speed = 0x0F;
+            bOk = true;
+            while ((true == bOk) && (ram_speed > 0) )
             {
-                s = lfsr_fib();
-                //pDebug[i+0x800] = s;
-                if (p16[i] != s)
-                    bFail = true;  
-            }
-            assert (false == bFail);  
-            //measuring speed
-            while ((false == bFail) && (iRAM_Speed > 0) )
+                ram_speed--;
+                bOk = test_memory_range((void*)(CS0(chunk*0x100000)),0x4000,0xF);
+            }   
+            if (false == bOk)
+                ram_speed++;       
+            //verifying for a full range
+            bOk = test_memory_range((void*)(CS0(chunk*0x100000)),ram_size,0xF);
+            //if failed, choosing a slower speed
+            while ((false == bOk) && (ram_speed < 0xF) )
             {
-                //setting speed
-                iRAM_Speed--;
-                MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*iRAM_Speed));
-                //fill RAM with test data
-                lfsr = 0xACE1u;
-                for (int i=0;i<0x40000;i++)
-                {
-                    s = lfsr_fib();
-                    //pDebug[i] = s;
-                    p16[i] = s;
-                }
-                //verifying
-                bFail = false;
-                lfsr = 0xACE1u;
-                for (int i=0;((i<0x40000) && (bFail == false));i++)
-                {
-                    s = lfsr_fib();
-                    //pDebug[i+0x800] = s;
-                    if (p16[i] != s)
-                        bFail = true;  
-                }
-                lfsr = 0xACE1u;
-                for (int i=0x40000;i<0x80000;i++)
-                {
-                    s = lfsr_fib();
-                    //pDebug[i] = s;
-                    p16[i] = s;
-                }
-                //verifying
-                bFail = false;
-                lfsr = 0xACE1u;
-                for (int i=0x40000;((i<0x80000) && (bFail == false));i++)
-                {
-                    s = lfsr_fib();
-                    //pDebug[i+0x800] = s;
-                    if (p16[i] != s)
-                        bFail = true;  
-                } 
-            }          
+                ram_speed++;
+                bOk = test_memory_range((void*)(CS0(chunk*0x100000)),ram_size,0xF);
+            }   
         }
 
         //output results
         if (bUnmapped)
-            sprintf(text,"  %X : UNMAPPED",CS0(iChunk*0x100000));
+            sprintf(text," %X : UNMAPPED",CS0(chunk*0x100000));
         else if (bRAM)
-            sprintf(text,"  %X : RAM SPD=%i PRE=X",CS0(iChunk*0x100000),iRAM_Speed);
+        {
+            switch (ram_size)
+            {
+                case 0x100000:
+                    sprintf(text," %X: RAM 1M SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    break;
+                case 0xF0000:
+                    sprintf(text," %X: RAM .93M SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    break;
+                case 0x80000:
+                    if (ram_aliased)
+                        sprintf(text," %X: RAM 0.5Ma SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    else
+                        sprintf(text," %X: RAM 0.5M SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    break;
+                default:
+                    sprintf(text," %X: RAM ??? SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    break;
+            }
+        }
         else
-            sprintf(text,"  %X : ROM SPD=X PRE=X",CS0(iChunk*0x100000));
+            sprintf(text,"  %X : ROM SPD=X PRE=X",CS0(chunk*0x100000));
         
         int heigth = _svin_text_render(buf,352,text,"Robtronika10");
         //assert (heigth <= 12);
         //copy text to VDP1 sprites
-        uint8_t * p8a = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*10 + (iChunk*6)*352);
-        uint8_t * p8b = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*234 + (iChunk*6)*352);
+        uint8_t * p8a = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*10 + (chunk*6)*352);
+        uint8_t * p8b = (uint8_t *)(vdp1_vram_partitions.texture_base + 704*234 + (chunk*6)*352);
         uint8_t c;
         for (int j=0;j<(heigth/2);j++)
         {
