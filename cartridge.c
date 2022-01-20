@@ -16,12 +16,15 @@ uint16_t lfsr_fib(void)
     return lfsr;
 }
 
-bool test_memory_range(void * address, int size, int speed)
+bool test_ram_range(void * address, int size, int speed, bool preread)
 {
     uint16_t * p16 = (uint16_t *)address;
     uint16_t s;
     //setting speed
-    MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*speed));
+    if (true == preread)
+        MEMORY_WRITE(32, SCU(ASR0), 0x90001FF0 | (0x1100000*speed));
+    else
+        MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*speed));
     //fill RAM with test data
     lfsr = 0xACE1u;
     for (unsigned int i=0;i<(size/sizeof(uint16_t));i++)
@@ -41,12 +44,15 @@ bool test_memory_range(void * address, int size, int speed)
     return bOk;
 }
 
-bool test_memory_range_aliased(void * write_address, void *  read_address, int size, int speed)
+bool test_ram_range_aliased(void * write_address, void *  read_address, int size, int speed, bool preread)
 {
     uint16_t * p16 = (uint16_t *)write_address;
     uint16_t s;
     //setting speed
-    MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*speed));
+    if (true == preread)
+        MEMORY_WRITE(32, SCU(ASR0), 0x90001FF0 | (0x1100000*speed));
+    else
+        MEMORY_WRITE(32, SCU(ASR0), 0x10001FF0 | (0x1100000*speed));
     //fill RAM with test data
     lfsr = 0xACE1u;
     for (unsigned int i=0;i<(size/sizeof(uint16_t));i++)
@@ -183,24 +189,22 @@ void cartridge_memory_test()
 
     bool bRAM;
     int ram_speed;
+    int ram_speed_preread;
     bool bUnmapped;
     bool bOk;
-    volatile uint16_t *p16;
     //do CS0 tests for each 1M region
     for (int chunk = 0; chunk<32; chunk++)
     {
         //do test
         //first let's check if it's ROM or RAM
-        p16 = (uint16_t*)(CS0(chunk*0x100000));
-        p16[0] = 0xDEAF;
-        p16[13] = 0xFACE;    
-        if ((p16[0] == 0xDEAF) && (p16[13] == 0xFACE) )
+        if (true == test_ram_range((void*)(CS0(chunk*0x100000)),16,0xF,false))
         {
             bRAM = true;
             bUnmapped = false;
         }
         else
         {
+            volatile uint16_t *p16 = (uint16_t *)(CS0(chunk*0x100000));
             bRAM = false;
             //it's a ROM or unmapped, deciding which one
             bUnmapped = true;
@@ -214,21 +218,21 @@ void cartridge_memory_test()
         if (true == bRAM)
         {
             //detecting ram type first at minimal speed
-            if (true == test_memory_range((void*)(CS0(chunk*0x100000)),0x100000,0xF))
+            if (true == test_ram_range((void*)(CS0(chunk*0x100000)),0x100000,0xF,false))
             {
                 //1M 
                 ram_size = 0x100000;
             }
-            else if (true == test_memory_range((void*)(CS0(chunk*0x100000)),0xF0000,0xF))
+            else if (true == test_ram_range((void*)(CS0(chunk*0x100000)),0xF0000,0xF,false))
             {
                 //0.93M 
                 ram_size = 0xF0000;
             }
-            else if ( (true == test_memory_range((void*)(CS0(chunk*0x100000)),0x80000,0xF)) )
+            else if ( (true == test_ram_range((void*)(CS0(chunk*0x100000)),0x80000,0xF,false)) )
             {
                 //0.5M 
                 ram_size = 0x80000;
-                if (true == test_memory_range_aliased((void*)(CS0(chunk*0x100000)),(void*)(CS0(chunk*0x100000+0x80000)),0x80000,0xF))
+                if (true == test_ram_range_aliased((void*)(CS0(chunk*0x100000)),(void*)(CS0(chunk*0x100000+0x80000)),0x80000,0xF,false))
                     ram_aliased = true;
             }
 
@@ -238,18 +242,37 @@ void cartridge_memory_test()
             while ((true == bOk) && (ram_speed > 0) )
             {
                 ram_speed--;
-                bOk = test_memory_range((void*)(CS0(chunk*0x100000)),0x4000,0xF);
+                bOk = test_ram_range((void*)(CS0(chunk*0x100000)),0x4000,0xF,false);
             }   
             if (false == bOk)
                 ram_speed++;       
             //verifying for a full range
-            bOk = test_memory_range((void*)(CS0(chunk*0x100000)),ram_size,0xF);
+            bOk = test_ram_range((void*)(CS0(chunk*0x100000)),ram_size,0xF,false);
             //if failed, choosing a slower speed
             while ((false == bOk) && (ram_speed < 0xF) )
             {
                 ram_speed++;
-                bOk = test_memory_range((void*)(CS0(chunk*0x100000)),ram_size,0xF);
+                bOk = test_ram_range((void*)(CS0(chunk*0x100000)),ram_size,0xF,false);
             }   
+
+            //same stuff for speed with preread enabled
+            ram_speed_preread = 0x0F;
+            bOk = true;
+            while ((true == bOk) && (ram_speed_preread > 0) )
+            {
+                ram_speed_preread--;
+                bOk = test_ram_range((void*)(CS0(chunk*0x100000)),0x4000,0xF,true);
+            }   
+            if (false == bOk)
+                ram_speed_preread++;       
+            //verifying for a full range
+            bOk = test_ram_range((void*)(CS0(chunk*0x100000)),ram_size,0xF,true);
+            //if failed, choosing a slower speed
+            while ((false == bOk) && (ram_speed_preread < 0xF) )
+            {
+                ram_speed_preread++;
+                bOk = test_ram_range((void*)(CS0(chunk*0x100000)),ram_size,0xF,true);
+            }  
         }
 
         //output results
@@ -260,19 +283,19 @@ void cartridge_memory_test()
             switch (ram_size)
             {
                 case 0x100000:
-                    sprintf(text," %X: RAM 1M SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    sprintf(text," %X: RAM 1M SPD %i PR %i",CS0(chunk*0x100000),ram_speed,ram_speed_preread);
                     break;
                 case 0xF0000:
-                    sprintf(text," %X: RAM .93M SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    sprintf(text," %X: RAM .93M SPD %i PR %i",CS0(chunk*0x100000),ram_speed,ram_speed_preread);
                     break;
                 case 0x80000:
                     if (ram_aliased)
-                        sprintf(text," %X: RAM 0.5Ma SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                        sprintf(text," %X: RAM 0.5Ma SPD %i PR %i",CS0(chunk*0x100000),ram_speed,ram_speed_preread);
                     else
-                        sprintf(text," %X: RAM 0.5M SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                        sprintf(text," %X: RAM 0.5M SPD %i PR %i",CS0(chunk*0x100000),ram_speed,ram_speed_preread);
                     break;
                 default:
-                    sprintf(text," %X: RAM ??? SPD %i PR X",CS0(chunk*0x100000),ram_speed);
+                    sprintf(text," %X: RAM ??? SPD %i PR %i",CS0(chunk*0x100000),ram_speed,ram_speed_preread);
                     break;
             }
         }
