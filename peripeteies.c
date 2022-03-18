@@ -57,6 +57,7 @@ main(void)
         _svin_background_set("BOOTLOGO.BG");
         _svin_delay(1000);
         cartridge_memory_test();
+        //cartridge_backup_restore();
         while(1);
         _svin_background_fade_to_black();
         
